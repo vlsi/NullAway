@@ -62,6 +62,13 @@ public class FuzzTargetsTest {
   }
 
   @Test
+  public void aKindFromTheTypeMutationRangeAppliesThatMutation() {
+    // Kind 128 is a TypeMutator mutation; its first candidate here wraps the returned expression.
+    assertThat(decode(0, 2, 0, 128, 0, 0).sources().get(0).text())
+        .isEqualTo("class C { boolean m(Object o) { return java.util.Objects.requireNonNull(o == null); } }");
+  }
+
+  @Test
   public void aKindFromTheRelationRangeAppliesThatRelation() {
     // Kind 193 is the second relation, null-check-swap.
     assertThat(decode(0, 2, 0, 193, 0, 0).sources().get(0).text())

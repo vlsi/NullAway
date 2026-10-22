@@ -16,7 +16,8 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@code corpus-structured/}: for {@link StructuredFuzzTarget}, one three-byte input per
- *       seed and configuration, which compiles that seed unchanged;
+ *       test seed and configuration, and one per generated program under a configuration that
+ *       cycles with its index, each of which compiles its seed unchanged;
  *   <li>{@code corpus-raw/}: for {@link RawSourceFuzzTarget}, the source text of every seed with a
  *       single unit;
  *   <li>{@code java.dict}: a libFuzzer dictionary of Java keywords and nullness annotation names.
@@ -42,11 +43,14 @@ public final class FuzzCorpus {
   /** Writes the corpora and the dictionary as the class comment describes. */
   public static void main(String[] args) throws IOException {
     Path out = Path.of(args.length > 0 ? args[0] : "build/fuzz");
-    ImmutableList<Seed> seeds = FuzzSupport.loadSeeds();
+    ImmutableList<Seed> seeds = FuzzSupport.fuzzSeeds();
     Path structured = clean(out.resolve("corpus-structured"));
     int configs = FuzzSupport.CONFIGS.size();
+    int testSeeds = FuzzSupport.loadSeeds().size();
     for (int i = 0; i < seeds.size(); i++) {
-      for (int c = 0; c < configs; c++) {
+      int first = i < testSeeds ? 0 : i % configs;
+      int last = i < testSeeds ? configs - 1 : first;
+      for (int c = first; c <= last; c++) {
         Files.write(
             structured.resolve(String.format("seed-%04d-%d", i, c)),
             new byte[] {(byte) (i >> 8), (byte) i, (byte) c});

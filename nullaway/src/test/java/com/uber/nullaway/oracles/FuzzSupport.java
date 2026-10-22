@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -90,6 +91,20 @@ final class FuzzSupport {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  /**
+   * Returns the seeds of {@link #loadSeeds()} followed by each distinct program of {@link
+   * CombinationGenerator#generate()}, the inputs the structured fuzz target chooses from. The
+   * generated programs come last, so a test seed keeps its index.
+   */
+  static ImmutableList<Seed> fuzzSeeds() {
+    Map<String, Seed> generated = new LinkedHashMap<>();
+    for (CombinationGenerator.Row row : CombinationGenerator.generate()) {
+      Source source = row.source();
+      generated.putIfAbsent(source.text(), new Seed("generated " + row, ImmutableList.of(source)));
+    }
+    return ImmutableList.<Seed>builder().addAll(loadSeeds()).addAll(generated.values()).build();
   }
 
   private final Compiler compiler = new Compiler();

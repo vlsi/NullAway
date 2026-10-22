@@ -19,12 +19,13 @@ import org.jspecify.annotations.Nullable;
  * <p>An input decodes as follows, every number big-endian and reduced modulo its range:
  *
  * <ul>
- *   <li>bytes 0 and 1: the index of the seed in {@link FuzzSupport#loadSeeds()};
+ *   <li>bytes 0 and 1: the index of the seed in {@link FuzzSupport#fuzzSeeds()};
  *   <li>byte 2: the index of the configuration in {@link FuzzSupport#CONFIGS};
  *   <li>the rest, three bytes per operation: a kind byte and a two-byte index. A kind below
  *       {@value #ANNOTATION_KINDS} applies the {@link AnnotationMutator#candidates} mutation at that
- *       index; any other kind picks a relation of {@link #RELATIONS} and applies its variant at that
- *       index.
+ *       index, a kind below {@value #MUTATION_KINDS} the {@link TypeMutator#candidates} mutation at
+ *       that index, and any other kind picks a relation of {@link #RELATIONS} and applies its
+ *       variant at that index.
  * </ul>
  *
  * <p>Each operation applies to the text the previous ones produced, and the candidates and the
@@ -36,8 +37,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class StructuredFuzzTarget {
 
-  /** The kind bytes, out of 256, that select an annotation mutation rather than a relation. */
-  static final int ANNOTATION_KINDS = 192;
+  /** The kind bytes, out of 256, below which an operation is an annotation mutation. */
+  static final int ANNOTATION_KINDS = 128;
+
+  /** The kind bytes below which an operation is a mutation; those from here on pick a relation. */
+  static final int MUTATION_KINDS = 192;
 
   /** The rewrites an operation may apply, in the order the kind byte indexes them. */
   static final ImmutableList<Relation> RELATIONS =
@@ -86,7 +90,7 @@ public final class StructuredFuzzTarget {
 
   /** Loads the seeds once per process; Jazzer calls it before the first input. */
   public static void fuzzerInitialize() {
-    seeds = FuzzSupport.loadSeeds();
+    seeds = FuzzSupport.fuzzSeeds();
     support = new FuzzSupport();
     System.out.println("StructuredFuzzTarget: " + seeds.size() + " seeds");
   }
@@ -166,8 +170,11 @@ public final class StructuredFuzzTarget {
   /** Applies one operation to {@code step}, or returns it unchanged if the operation has no site. */
   private static Step apply(String name, Step step, int kind, int index) {
     Seed current = new Seed(name, step.sources());
-    if (kind < ANNOTATION_KINDS) {
-      ImmutableList<Mutation> candidates = AnnotationMutator.candidates(current);
+    if (kind < MUTATION_KINDS) {
+      ImmutableList<Mutation> candidates =
+          kind < ANNOTATION_KINDS
+              ? AnnotationMutator.candidates(current)
+              : TypeMutator.candidates(current);
       if (candidates.isEmpty()) {
         return step;
       }
@@ -179,7 +186,7 @@ public final class StructuredFuzzTarget {
           unit.withText(TextEdit.apply(unit.text(), List.of(mutation.edit()))));
       return new Step(ImmutableList.copyOf(sources), append(step.applied(), mutation.description()));
     }
-    Relation relation = RELATIONS.get((kind - ANNOTATION_KINDS) % RELATIONS.size());
+    Relation relation = RELATIONS.get((kind - MUTATION_KINDS) % RELATIONS.size());
     ImmutableList<ImmutableList<Source>> variants = relation.variants(current);
     if (variants.isEmpty()) {
       return step;

@@ -326,6 +326,8 @@ configurations {
 }
 dependencies {
     jazzer libs.jazzer
+    // ShapeHooks only; Jazzer brings the API at run time.
+    testCompileOnly libs.jazzer.api
 }
 def fuzzCorpus = tasks.register('fuzzCorpus', JavaExec) {
     description = "Writes the Jazzer base corpora and dictionary under build/fuzz"
@@ -386,6 +388,10 @@ tasks.register('fuzzRandom', JavaExec) {
         ]
         // An unmutated structured input is three bytes, and libFuzzer would otherwise cap inputs at the largest one.
         args += variant == 'raw' ? ["-dict=build/fuzz/java.dict", "-max_len=16384"] : ["-max_len=64"]
+        // -PfuzzShapeHooks reports the shapes of the arguments of NullAway's generics checks as states to explore.
+        if (providers.gradleProperty("fuzzShapeHooks").isPresent()) {
+            args += ["--custom_hooks=com.uber.nullaway.oracles.ShapeHooks"]
+        }
         def extra = providers.gradleProperty("fuzzArgs")
         if (extra.isPresent()) {
             args += extra.get().split(' ').toList()

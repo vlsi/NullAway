@@ -101,6 +101,7 @@ junit4 = { module = "junit:junit", version.ref = "junit4" }
 pitest-command-line = { module = "org.pitest:pitest-command-line", version.ref = "pitest" }
 pitest-entry = { module = "org.pitest:pitest-entry", version.ref = "pitest" }
 jazzer = { module = "com.code-intelligence:jazzer", version.ref = "jazzer" }
+jazzer-api = { module = "com.code-intelligence:jazzer-api", version.ref = "jazzer" }
 junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit-jupiter" }
 apiguardian = { module = "org.apiguardian:apiguardian-api", version.ref = "apiguardian" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
