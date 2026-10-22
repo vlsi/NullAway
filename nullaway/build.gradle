@@ -280,3 +280,116 @@ tasks.register('buildWithNullAway', JavaCompile) {
 project.tasks.named('check').configure {
     dependsOn 'buildWithNullAway'
 }
+
+// Runs the oracle pilot over seeds taken from the test sources.  Pass its arguments with --args, e.g.
+// ./gradlew :nullaway:oraclePilot --args="--limit 200 --configs jspecify"
+// -PoraclePilotJdk=<version> runs it on that JDK instead of the one running Gradle; the javac in that JDK
+// decides which sources are valid, and javac before 25 drops type-use annotations inside intersection casts.
+// See com.uber.nullaway.oracles.OraclePilot for the oracles and the arguments.
+tasks.register('oraclePilot', JavaExec) {
+    def pilotJdk = providers.gradleProperty("oraclePilotJdk")
+    if (pilotJdk.isPresent()) {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(pilotJdk.get() as int)
+        }
+    }
+    description = "Runs NullAway over test-derived seeds and reports crashes and metamorphic divergences"
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.uber.nullaway.oracles.OraclePilot'
+    workingDir = projectDir
+    maxHeapSize = "2g"
+    jvmArgs += [
+        "--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED",
+        // Without it a hot NullPointerException loses its stack trace, and the crash its signature.
+        "-XX:-OmitStackTraceInFastThrow",
+    ]
+}
+
+// Coverage-guided fuzzing of NullAway's crash oracle with Jazzer, over the same seeds as oraclePilot.
+// ./gradlew :nullaway:fuzzStructured -PfuzzSeconds=600   (input bytes pick a seed, a configuration, and mutations)
+// ./gradlew :nullaway:fuzzRaw -PfuzzSeconds=600          (input bytes are a Java source file)
+// Only com.uber.nullaway classes are instrumented; javac and Error Prone are not.  Corpora, crash inputs, and the
+// stats.tsv and signatures.tsv the targets write go under build/fuzz.  -PfuzzArgs passes more libFuzzer flags.
+configurations {
+    jazzer
+}
+dependencies {
+    jazzer libs.jazzer
+}
+def fuzzCorpus = tasks.register('fuzzCorpus', JavaExec) {
+    description = "Writes the Jazzer base corpora and dictionary under build/fuzz"
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.uber.nullaway.oracles.FuzzCorpus'
+    workingDir = projectDir
+    jvmArgs += tasks.named('oraclePilot', JavaExec).get().jvmArgs
+    args 'build/fuzz'
+}
+// The same crash oracle without coverage guidance, for comparison: -PfuzzRandomArgs="--configs jspecify-experimental".
+tasks.register('fuzzRandom', JavaExec) {
+    description = "Runs the fuzz targets' crash oracle over seeds and random mutants, without Jazzer"
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.uber.nullaway.oracles.RandomCrashRun'
+    workingDir = projectDir
+    maxHeapSize = "3g"
+    jvmArgs += tasks.named('oraclePilot', JavaExec).get().jvmArgs
+    jvmArgs += ["-XX:-OmitStackTraceInFastThrow", "-Dnullaway.fuzz.out=build/fuzz/random"]
+    def extra = providers.gradleProperty("fuzzRandomArgs")
+    if (extra.isPresent()) {
+        args extra.get().split(' ').toList()
+    }
+}
+[structured: 'StructuredFuzzTarget', raw: 'RawSourceFuzzTarget'].each { variant, target ->
+    tasks.register("fuzz${variant.capitalize()}", JavaExec) {
+        description = "Fuzzes NullAway with Jazzer through ${target}"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        dependsOn fuzzCorpus
+        classpath = sourceSets.test.runtimeClasspath + configurations.jazzer
+        mainClass = 'com.code_intelligence.jazzer.Jazzer'
+        workingDir = projectDir
+        maxHeapSize = "3g"
+        jvmArgs += tasks.named('oraclePilot', JavaExec).get().jvmArgs
+        // Without -OmitStackTraceInFastThrow a hot NullPointerException loses its stack trace and its crash signature.
+        jvmArgs += ["-XX:+EnableDynamicAgentLoading", "-XX:-OmitStackTraceInFastThrow", "-Dnullaway.fuzz.out=build/fuzz/${variant}"]
+        def out = "build/fuzz/${variant}"
+        def seconds = providers.gradleProperty("fuzzSeconds").getOrElse("600")
+        def nullaway = 'com.uber.nullaway.**'
+        def harness = 'com.uber.nullaway.oracles.**:com.uber.nullaway.testlibrarymodels.**'
+        doFirst {
+            delete("${out}/instrumented")
+            ["corpus", "artifacts", "instrumented"].each { file("${out}/${it}").mkdirs() }
+        }
+        args = [
+            "--target_class=com.uber.nullaway.oracles.${target}",
+            "--instrumentation_includes=${nullaway}",
+            "--instrumentation_excludes=${harness}",
+            "--custom_hook_includes=${nullaway}",
+            "--custom_hook_excludes=${harness}",
+            "--keep_going=1000",
+            "--reproducer_path=${out}/artifacts",
+            "--dump_classes_dir=${out}/instrumented",
+            "-artifact_prefix=${out}/artifacts/",
+            "-max_total_time=${seconds}",
+            "-timeout=120",
+            "-rss_limit_mb=0",
+            "-print_final_stats=1",
+        ]
+        // An unmutated structured input is three bytes, and libFuzzer would otherwise cap inputs at the largest one.
+        args += variant == 'raw' ? ["-dict=build/fuzz/java.dict", "-max_len=16384"] : ["-max_len=64"]
+        def extra = providers.gradleProperty("fuzzArgs")
+        if (extra.isPresent()) {
+            args += extra.get().split(' ').toList()
+        }
+        args += ["${out}/corpus", "build/fuzz/corpus-${variant}"]
+    }
+}
