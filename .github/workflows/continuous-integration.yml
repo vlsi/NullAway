@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - codex/ci-reuse-nullaway-artifact
 # Cancel in-progress runs for pull requests, but not for master branch pushes or merge queue
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -82,9 +83,18 @@ jobs:
         if: steps.jacoco_report.outcome == 'success'
       - name: Test publishToMavenLocal flow
         env:
-          ORG_GRADLE_PROJECT_VERSION_NAME: '0.0.0.1-LOCAL'
           ORG_GRADLE_PROJECT_RELEASE_SIGNING_ENABLED: 'false'
-        run: ./gradlew publishToMavenLocal
+        run: ./gradlew --quiet publishToMavenLocal
+      - name: Upload NullAway Maven repository
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nullaway-maven-local
+          path: ~/.m2/repository/com/uber/nullaway
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
       - name: Check that Git tree is clean after build and test
         run: ./.buildscript/check_git_clean.sh
   suppression-remover-regression-tests:
@@ -146,6 +156,8 @@ jobs:
         run: ./gradlew testErrorProneLatestSnapshot
   compile-other-projects:
     name: "Build ${{ matrix.project }} with snapshot"
+    needs:
+      - build
     strategy:
       fail-fast: false
       # Each project builds at a pinned commit, so a change upstream cannot fail an unrelated
@@ -211,10 +223,11 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-      - name: Publish to Maven Local
-        env:
-          ORG_GRADLE_PROJECT_RELEASE_SIGNING_ENABLED: 'false'
-        run: ./gradlew publishToMavenLocal
+      - name: Download NullAway Maven repository
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nullaway-maven-local
+          path: ~/.m2/repository/com/uber/nullaway
       - name: Check out ${{ matrix.project }} at the pinned commit
         env:
           PROJECT: ${{ matrix.project }}

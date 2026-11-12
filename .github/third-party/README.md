@@ -37,8 +37,9 @@ file.
 
 ## How a project picks up the snapshot
 
-The job first publishes NullAway to the local Maven repository with `publishToMavenLocal`, then runs the `build`
-command in the project checkout. The command sees two things:
+The Ubuntu build publishes NullAway with `publishToMavenLocal` and uploads the `com/uber/nullaway` Maven repository
+as `nullaway-maven-local`. After the build matrix passes, each third-party job downloads it into its local Maven
+repository and runs the `build` command in the project checkout. The command sees two things:
 
 - `use-snapshot.gradle.kts`, copied into the checkout. Passed to Gradle with `--init-script`, it replaces the version of
   every `com.uber.nullaway` dependency with the newest one the project's repositories offer. The init script adds the
