@@ -44,6 +44,8 @@ jobs:
           check-latest: 'true'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       - name: List toolchains
         run: ./gradlew javaToolchains
       - name: Check formatting
@@ -103,6 +105,8 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       - name: Build and publish to Maven local
         env:
           ORG_GRADLE_PROJECT_RELEASE_SIGNING_ENABLED: 'false'
@@ -152,6 +156,8 @@ jobs:
           check-latest: 'true'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       # Gradle builds buildSrc as an included build and asks it only for its plugins, so its own
       # tests run only when something asks for them.
       - name: Run buildSrc tests
@@ -171,6 +177,8 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       - name: Test with Error Prone snapshot
         run: ./gradlew testErrorProneLatestSnapshot
   compile-other-projects:
@@ -242,6 +250,8 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       - name: Download NullAway Maven repository
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -288,6 +298,8 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch && github.ref != 'refs/heads/codex/ci-reuse-nullaway-artifact' }}
       - name: Verify snapshot version
         run: grep -Eq '^VERSION_NAME=.*-SNAPSHOT$' gradle.properties
       - name: Publish snapshot
